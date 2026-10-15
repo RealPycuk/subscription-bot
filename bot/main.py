@@ -28,6 +28,7 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (BotCommand, BufferedInputFile, CallbackQuery, InlineKeyboardButton,
                            InlineKeyboardMarkup, LabeledPrice, LinkPreviewOptions, Message, PreCheckoutQuery)
 
+import metrics as M
 from texts import LANGS, pick_lang, plan_title, tr
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -45,6 +46,7 @@ PANEL_DB_DSN = os.environ.get("PANEL_DB_DSN", "").strip()
 SUPPORT_URL = os.environ.get("SUPPORT_URL", "").strip()
 BRAND = os.environ.get("BRAND", "VPN")
 REF_BONUS_DAYS = int(os.environ.get("REF_BONUS_DAYS", "7"))
+METRICS_PORT = int(os.environ.get("METRICS_PORT", "9101"))          # 0 — метрики выключены
 
 HAPP_ANDROID = "https://play.google.com/store/apps/details?id=com.happproxy"
 HAPP_IOS = "https://apps.apple.com/app/happ-proxy-utility/id6504287215"
@@ -132,15 +134,20 @@ class PanelError(Exception):
 
 
 async def panel(method: str, path: str, body: dict | None = None):
-    async with http.request(method, PANEL_URL + path, json=body,
-                            headers={"Authorization": f"Bearer {PANEL_API_TOKEN}"},
-                            timeout=aiohttp.ClientTimeout(total=20), allow_redirects=False) as r:
-        if r.status != 200:
-            raise PanelError(f"{path}: HTTP {r.status}")
-        d = await r.json(content_type=None)
-        if not d.get("success"):
-            raise PanelError(f"{path}: {d.get('msg')}")
-        return d.get("obj")
+    with M.PANEL_SECONDS.labels(method).time():
+        try:
+            async with http.request(method, PANEL_URL + path, json=body,
+                                    headers={"Authorization": f"Bearer {PANEL_API_TOKEN}"},
+                                    timeout=aiohttp.ClientTimeout(total=20), allow_redirects=False) as r:
+                if r.status != 200:
+                    raise PanelError(f"{path}: HTTP {r.status}")
+                d = await r.json(content_type=None)
+                if not d.get("success"):
+                    raise PanelError(f"{path}: {d.get('msg')}")
+                return d.get("obj")
+        except Exception:
+            M.PANEL_ERRORS.inc()
+            raise
 
 
 async def panel_client(client_id: int) -> dict | None:
@@ -1180,9 +1187,11 @@ async def monitor():
     while True:
         try:
             now = await run_checks()
+            M.PROBLEMS.set(len(now))
             for country, down in country_down(now).items():
                 down_strikes[country] = down_strikes[country] + 1 if down else 0
                 COUNTRY_OK[country] = down_strikes[country] < 2
+                M.REGION_UP.labels(country).set(int(COUNTRY_OK[country]))
                 if down_strikes[country] == 3 and not announced[country]:     # ~6 минут подряд — сообщаем людям
                     announced[country] = True
                     await broadcast_outage(country, recovered=False)
@@ -1274,6 +1283,11 @@ async def send_backup() -> None:
         name = f"sharx_panel_{datetime.now(MSK):%Y%m%d_%H%M}.dump"
         await bot.send_document(ADMIN_ID, BufferedInputFile(out, name),
                                 caption=f"💾 Резервная копия базы панели ({len(out) // 1024} КБ)")
+        M.BACKUP_TS.set(time.time())
+        M.BACKUP_SIZE.set(len(out))
+        await db.execute("insert or replace into kv(k, v) values('last_backup', ?)",
+                         (json.dumps({"ts": int(time.time()), "size": len(out)}),))
+        await db.commit()
         if DB_PATH.exists():
             await bot.send_document(ADMIN_ID, BufferedInputFile(DB_PATH.read_bytes(), "bot.db"),
                                     caption="💾 База бота (платежи и пользователи)")
@@ -1290,6 +1304,40 @@ async def backup_scheduler():
             nxt += timedelta(days=1)
         await asyncio.sleep((nxt - now).total_seconds())
         await send_backup()
+
+
+async def update_metrics(handler, event, data):
+    """Middleware: считает апдейты, ошибки и время обработки."""
+    M.UPDATES.labels(event.event_type).inc()
+    started = time.perf_counter()
+    try:
+        return await handler(event, data)
+    except Exception:
+        M.HANDLER_ERRORS.inc()
+        raise
+    finally:
+        M.HANDLER_SECONDS.observe(time.perf_counter() - started)
+
+
+async def metrics_refresher():
+    """Раз в минуту обновляет бизнес-метрики из базы бота."""
+    row = await (await db.execute("select v from kv where k='last_backup'")).fetchone()
+    if row:
+        last = json.loads(row["v"])
+        M.BACKUP_TS.set(last["ts"])
+        M.BACKUP_SIZE.set(last["size"])
+    while True:
+        try:
+            M.USERS.set((await (await db.execute("select count(*) c from users")).fetchone())["c"])
+            M.SUBSCRIBERS.set((await (await db.execute(
+                "select count(*) c from users where client_id is not null")).fetchone())["c"])
+            for r in await (await db.execute("select currency, count(*) n, sum(cast(amount as real)) s "
+                                             "from payments where status='paid' group by currency")).fetchall():
+                M.PAYMENTS.labels(r["currency"]).set(r["n"])
+                M.REVENUE.labels(r["currency"]).set(r["s"] or 0)
+        except Exception:
+            log.exception("metrics refresher")
+        await asyncio.sleep(60)
 
 
 async def setup_profile() -> None:
@@ -1313,12 +1361,16 @@ async def main():
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     dp = Dispatcher()
     dp.include_router(router)
+    dp.update.outer_middleware(update_metrics)
+    if METRICS_PORT:
+        M.serve(METRICS_PORT)
     global BOT_USERNAME
     me = await bot.get_me()
     BOT_USERNAME = me.username
     log.info("bot @%s started, admin=%s, cryptobot=%s", me.username, ADMIN_ID or "-", bool(CRYPTOBOT_TOKEN))
     await setup_profile()
-    tasks = [asyncio.create_task(t()) for t in (crypto_poller, expiry_notifier, monitor, backup_scheduler, device_watcher, limit_enforcer)]
+    tasks = [asyncio.create_task(t()) for t in (crypto_poller, expiry_notifier, monitor, backup_scheduler, device_watcher, limit_enforcer,
+                                                  metrics_refresher)]
     try:
         await dp.start_polling(bot)
     finally:

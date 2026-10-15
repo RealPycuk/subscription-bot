@@ -1,0 +1,62 @@
+# Юнит-тесты алертов: promtool test rules monitoring/prometheus/alerts_test.yml
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 30s
+
+tests:
+  - name: бот недоступен больше 2 минут
+    interval: 30s
+    input_series:
+      - series: 'up{job="bot", instance="127.0.0.1:9101"}'
+        values: '1 1 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 1m30s          # бот лежит 30 секунд — алерта ещё нет
+        alertname: BotDown
+        exp_alerts: []
+      - eval_time: 3m30s
+        alertname: BotDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: bot, instance: "127.0.0.1:9101"}
+            exp_annotations:
+              summary: "Бот не отвечает на /metrics"
+              description: "Prometheus не может получить метрики бота больше 2 минут: контейнер упал или завис."
+
+  - name: бэкап старше 26 часов
+    interval: 1h
+    input_series:
+      # бэкап сделан в момент t=0 и больше не обновлялся
+      - series: 'bot_last_backup_success_timestamp_seconds{job="bot"}'
+        values: '0+0x30'
+      - series: 'bot_last_backup_success_timestamp_seconds{job="bot-fresh"}'
+        values: '1+0x30'
+    alert_rule_test:
+      - eval_time: 20h
+        alertname: BackupMissing
+        exp_alerts: []
+      - eval_time: 28h
+        alertname: BackupMissing
+        exp_alerts:
+          - exp_labels: {severity: critical, job: bot-fresh}
+            exp_annotations:
+              summary: "Нет свежего бэкапа базы панели"
+              description: "Последний успешный бэкап был 1d 3h 59m 59s назад."
+
+  - name: нехватка памяти
+    interval: 1m
+    input_series:
+      - series: 'node_memory_MemAvailable_bytes{instance="server-a"}'
+        values: '500+0x5 100+0x15'
+      - series: 'node_memory_MemTotal_bytes{instance="server-a"}'
+        values: '2000+0x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: HostMemoryLow
+        exp_alerts: []
+      - eval_time: 18m
+        alertname: HostMemoryLow
+        exp_alerts:
+          - exp_labels: {severity: warning, instance: server-a}
+            exp_annotations:
+              summary: "Мало свободной памяти на server-a"
+              description: "Доступно 5% памяти."

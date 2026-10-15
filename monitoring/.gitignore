@@ -1,0 +1,5 @@
+.env
+alertmanager/alertmanager.yml
+alertmanager/bot_token
+prometheus/targets/tcp.yml
+prometheus/targets/https.yml

@@ -50,3 +50,23 @@ jobs:
           cp .env.example .env
           cp config/monitoring.example.json config/monitoring.json
           docker compose config -q
+
+  monitoring:
+    name: Monitoring configs & alert tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: promtool check config
+        run: docker run --rm -v "$PWD/monitoring/prometheus":/p:ro --entrypoint promtool prom/prometheus:v3.2.1 check config /p/prometheus.yml
+      - name: promtool test rules (юнит-тесты алертов)
+        run: docker run --rm -v "$PWD/monitoring/prometheus":/p:ro -w /p --entrypoint promtool prom/prometheus:v3.2.1 test rules alerts_test.yml
+      - name: amtool check-config
+        run: docker run --rm -v "$PWD/monitoring/alertmanager":/a:ro --entrypoint amtool prom/alertmanager:v0.28.1 check-config /a/alertmanager.example.yml
+      - name: blackbox config check
+        run: docker run --rm -v "$PWD/monitoring/blackbox":/b:ro prom/blackbox-exporter:v0.26.0 --config.file=/b/blackbox.yml --config.check
+      - name: Grafana dashboards are valid JSON
+        run: for f in monitoring/grafana/dashboards/*.json; do python3 -m json.tool "$f" > /dev/null && echo "OK $f"; done
+      - name: docker compose config
+        run: |
+          cp monitoring/.env.example monitoring/.env
+          docker compose -f monitoring/docker-compose.yml config -q

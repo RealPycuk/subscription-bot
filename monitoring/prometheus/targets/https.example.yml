@@ -1,0 +1,3 @@
+# Скопируйте в https.yml: панель и сервер подписок (код ответа и срок сертификата)
+- targets: ["https://panel.example.com:2053/"]
+  labels: {service: panel}

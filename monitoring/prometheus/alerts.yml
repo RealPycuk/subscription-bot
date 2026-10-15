@@ -1,0 +1,88 @@
+# Алерты Prometheus дополняют встроенный мониторинг бота и не дублируют его:
+# бот сам сообщает о недоступных нодах, закрытых портах, диске и сертификате панели.
+# Здесь — то, чего бот увидеть не может: его собственное падение, ресурсы хоста, бэкапы, ошибки API.
+groups:
+  - name: bot
+    rules:
+      - alert: BotDown
+        expr: up{job="bot"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Бот не отвечает на /metrics"
+          description: "Prometheus не может получить метрики бота больше 2 минут: контейнер упал или завис."
+
+      - alert: BotHandlerErrors
+        expr: increase(bot_handler_errors_total[15m]) > 5
+        labels: {severity: warning}
+        annotations:
+          summary: "Ошибки в обработчиках бота"
+          description: "За 15 минут {{ $value | humanize }} необработанных исключений."
+
+      - alert: PanelApiErrors
+        expr: increase(bot_panel_errors_total[15m]) > 20
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Панель отвечает ошибками"
+          description: "За 15 минут {{ $value | humanize }} неудачных запросов к API панели."
+
+      - alert: PanelApiSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(bot_panel_request_duration_seconds_bucket[10m]))) > 5
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "API панели медленно отвечает"
+          description: "p95 времени ответа {{ $value | humanizeDuration }}."
+
+      - alert: BackupMissing
+        expr: time() - bot_last_backup_success_timestamp_seconds > 26 * 3600 and bot_last_backup_success_timestamp_seconds > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "Нет свежего бэкапа базы панели"
+          description: "Последний успешный бэкап был {{ $value | humanizeDuration }} назад."
+
+  - name: host
+    rules:
+      - alert: HostMemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Мало свободной памяти на {{ $labels.instance }}"
+          description: "Доступно {{ $value | humanizePercentage }} памяти."
+
+      - alert: HostDiskWillFillIn24h
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}[6h], 24 * 3600) < 0
+          and node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes < 0.25
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "Диск {{ $labels.mountpoint }} заполнится в течение суток"
+          description: "При текущей скорости роста место закончится менее чем через 24 часа."
+
+      - alert: HostHighLoad
+        expr: node_load15 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"}) > 2
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Высокая нагрузка на CPU {{ $labels.instance }}"
+          description: "load15 на ядро: {{ $value | humanize }}."
+
+      - alert: HostOomKill
+        expr: increase(node_vmstat_oom_kill[10m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "OOM killer на {{ $labels.instance }}"
+          description: "Ядро убило процесс из-за нехватки памяти."
+
+  - name: monitoring
+    rules:
+      - alert: TargetDown
+        expr: up{job!="bot"} == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Цель {{ $labels.job }} недоступна"
+          description: "Prometheus не может опросить {{ $labels.instance }}."

@@ -1,0 +1,5 @@
+# Скопируйте в tcp.yml и укажите свои адреса
+- targets: ["203.0.113.10:443", "203.0.113.10:449"]
+  labels: {region: nl, service: reality}
+- targets: ["198.51.100.20:449", "198.51.100.20:451"]
+  labels: {region: ru, service: reality}

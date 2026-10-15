@@ -1,0 +1,13 @@
+modules:
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+  https_2xx:
+    prober: http
+    timeout: 10s
+    http:
+      method: GET
+      valid_status_codes: [200, 301, 302, 403, 404]   # важна доступность и TLS, а не конкретная страница
+      follow_redirects: false
+      fail_if_not_ssl: true
+      preferred_ip_protocol: ip4

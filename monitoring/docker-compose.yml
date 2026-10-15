@@ -1,0 +1,95 @@
+# Стек мониторинга: Prometheus, Alertmanager, Grafana, node_exporter, blackbox_exporter.
+# Всё в host-сети и слушает только 127.0.0.1 — наружу ничего не публикуется.
+# Grafana открывается через SSH-туннель: ssh -L 3000:127.0.0.1:3000 user@server
+
+x-common: &common
+  restart: unless-stopped
+  network_mode: host
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+services:
+  prometheus:
+    <<: *common
+    image: prom/prometheus:v3.2.1
+    container_name: mon_prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=1GB
+      - --web.listen-address=127.0.0.1:9090
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    read_only: true
+    mem_limit: 300m
+
+  alertmanager:
+    <<: *common
+    image: prom/alertmanager:v0.28.1
+    container_name: mon_alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=127.0.0.1:9093
+      - --cluster.listen-address=
+    volumes:
+      - ./alertmanager:/etc/alertmanager:ro
+      - alertmanager_data:/alertmanager
+    read_only: true
+    mem_limit: 64m
+
+  grafana:
+    <<: *common
+    image: grafana/grafana:11.5.2
+    container_name: mon_grafana
+    env_file: .env
+    environment:
+      GF_SERVER_HTTP_ADDR: 127.0.0.1
+      GF_SERVER_HTTP_PORT: "3000"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    mem_limit: 200m
+
+  node-exporter:
+    <<: *common
+    image: prom/node-exporter:v1.9.0
+    container_name: mon_node_exporter
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=127.0.0.1:9100
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|var/lib/docker/.+)($|/)
+    volumes:
+      - /:/host:ro,rslave
+    read_only: true
+    mem_limit: 64m
+
+  blackbox-exporter:
+    <<: *common
+    image: prom/blackbox-exporter:v0.26.0
+    container_name: mon_blackbox
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+      - --web.listen-address=127.0.0.1:9115
+    volumes:
+      - ./blackbox:/etc/blackbox:ro
+    read_only: true
+    mem_limit: 64m
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:

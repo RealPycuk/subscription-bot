@@ -1,0 +1,65 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  external_labels:
+    server: a
+
+rule_files:
+  - alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["127.0.0.1:9093"]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]
+
+  - job_name: node
+    static_configs:
+      - targets: ["127.0.0.1:9100"]
+        labels: {instance: server-a}
+
+  - job_name: bot
+    static_configs:
+      - targets: ["127.0.0.1:9101"]
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["127.0.0.1:9093"]
+
+  - job_name: blackbox
+    static_configs:
+      - targets: ["127.0.0.1:9115"]
+
+  # TCP-проверки портов нод. Список целей — в targets/tcp.yml (в репозитории только пример)
+  - job_name: tcp-probe
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    file_sd_configs:
+      - files: [targets/tcp.yml]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 127.0.0.1:9115
+
+  # HTTPS-проверки: код ответа и срок TLS-сертификата. Список — targets/https.yml
+  - job_name: https-probe
+    metrics_path: /probe
+    params:
+      module: [https_2xx]
+    file_sd_configs:
+      - files: [targets/https.yml]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 127.0.0.1:9115
