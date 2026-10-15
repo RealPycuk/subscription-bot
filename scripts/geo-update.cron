@@ -1,0 +1,5 @@
+# /etc/cron.d/geo-update — еженедельно, понедельник (UTC)
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30 1 * * 1 root /opt/geo-update/geo-update.sh >> /opt/geo-update/cron.out 2>&1
+45 1 * * 1 root WORK_DIR=/opt/geo-update BOT_ENV=/opt/subscription-bot/.env /opt/geo-update/routing-urls.sh >> /opt/geo-update/cron.out 2>&1

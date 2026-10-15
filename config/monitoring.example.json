@@ -1,0 +1,10 @@
+{
+  "nodes": {"nl": 1, "ru": 2},
+  "ports": [
+    {"name": "NL Reality 443",  "host": "203.0.113.10",  "port": 443,  "region": "nl", "critical": true},
+    {"name": "NL Reality 449",  "host": "203.0.113.10",  "port": 449,  "region": "nl", "critical": true},
+    {"name": "NL subscription", "host": "203.0.113.10",  "port": 2096, "region": "nl"},
+    {"name": "RU Reality 449",  "host": "198.51.100.20", "port": 449,  "region": "ru", "critical": true},
+    {"name": "RU Reality 451",  "host": "198.51.100.20", "port": 451,  "region": "ru", "critical": true}
+  ]
+}

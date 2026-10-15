@@ -1,0 +1,23 @@
+services:
+  bot:
+    build: .
+    container_name: subscription_bot
+    restart: unless-stopped
+    # host-сеть: бот обращается к панели и её базе на этом же сервере и проверяет порты
+    network_mode: host
+    env_file: .env
+    # минимум прав: не root, файловая система только для чтения, без capabilities
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./data:/data
+      - ./config/tariffs.json:/app/tariffs.json:ro
+      - ./config/monitoring.json:/app/monitoring.json:ro
+      # сертификат панели: бот предупреждает, если до истечения меньше 10 дней
+      - ${CERT_PATH:-./data/fullchain.pem}:/cert/fullchain.pem:ro

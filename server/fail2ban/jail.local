@@ -1,0 +1,12 @@
+[DEFAULT]
+# свои адреса не баним: локальный, второй сервер, домашний IP
+ignoreip = 127.0.0.1/8 ::1 198.51.100.20 192.0.2.50
+bantime = 1h
+bantime.increment = true
+bantime.maxtime = 1w
+findtime = 10m
+maxretry = 4
+
+[sshd]
+enabled = true
+backend = systemd

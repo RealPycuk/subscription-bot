@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    name: Python lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: flake8
+        run: |
+          pip install flake8
+          flake8 bot --select=E9,F63,F7,F82,F401,F811,F841 --show-source
+      - name: Validate JSON configs
+        run: |
+          for f in config/*.json; do python -m json.tool "$f" > /dev/null && echo "OK $f"; done
+
+  shell:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -S warning scripts/*.sh server/*.sh
+
+  docker:
+    name: Dockerfile lint & build
+    runs-on: ubuntu-latest
+    needs: [python, shell]
+    steps:
+      - uses: actions/checkout@v4
+      - name: hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: error
+      - name: Build image
+        run: docker build -t subscription-bot:ci .
+      - name: Check image runs as non-root
+        run: test "$(docker run --rm --entrypoint id subscription-bot:ci -u)" = "10001"
+      - name: Validate compose file
+        run: |
+          cp .env.example .env
+          cp config/monitoring.example.json config/monitoring.json
+          docker compose config -q
