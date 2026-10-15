@@ -1,3 +1,7 @@
+# try-reload-or-restart: перечитать конфиг, если sshd запущен; при socket activation новый конфиг
+# подхватится при следующем подключении
 - name: Reload ssh
-  ansible.builtin.shell: /usr/sbin/sshd -t && (systemctl reload ssh || systemctl reload sshd)
+  ansible.builtin.shell: >-
+    /usr/sbin/sshd -t &&
+    (systemctl try-reload-or-restart ssh 2>/dev/null || systemctl try-reload-or-restart sshd)
   changed_when: true

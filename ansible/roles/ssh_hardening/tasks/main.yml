@@ -1,3 +1,11 @@
+# В Ubuntu 24.04+ sshd запускается через ssh.socket, и /run/sshd может не существовать —
+# без неё не работает проверка конфига sshd -t
+- name: Каталог privilege separation для sshd
+  ansible.builtin.file:
+    path: /run/sshd
+    state: directory
+    mode: "0755"
+
 - name: Общие ограничения sshd
   ansible.builtin.copy:
     dest: /etc/ssh/sshd_config.d/60-hardening.conf
