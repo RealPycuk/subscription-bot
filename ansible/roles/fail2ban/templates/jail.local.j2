@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[DEFAULT]
+ignoreip = 127.0.0.1/8 ::1{% if peer_ip is defined %} {{ peer_ip }}{% endif %}{% for ip in fail2ban_ignoreip_extra %} {{ ip }}{% endfor %}
+
+bantime = 1h
+bantime.increment = true
+bantime.maxtime = 1w
+findtime = 10m
+maxretry = 4
+
+[sshd]
+enabled = true
+backend = systemd

@@ -1,0 +1,50 @@
+- name: Проверить, установлен ли Docker
+  ansible.builtin.command: docker compose version
+  register: docker_installed
+  changed_when: false
+  failed_when: false
+
+- name: Установить Docker из официального репозитория
+  when: docker_installed.rc != 0
+  block:
+    - name: Ключ репозитория Docker
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: "0644"
+
+    - name: Репозиторий Docker
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }} signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+        filename: docker
+        state: present
+
+    - name: Пакеты Docker
+      ansible.builtin.apt:
+        name: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]
+        state: present
+        update_cache: true
+
+- name: Прочитать текущий daemon.json
+  ansible.builtin.slurp:
+    src: /etc/docker/daemon.json
+  register: docker_daemon_current
+  failed_when: false
+
+# существующие настройки сохраняются, добавляется только ротация логов
+- name: Ротация логов контейнеров
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: "{{ docker_daemon_base | combine(docker_daemon_options) | to_nice_json }}\n"
+    mode: "0644"
+  vars:
+    docker_daemon_base: "{{ (docker_daemon_current.content | b64decode | from_json) if docker_daemon_current.content is defined else {} }}"
+  notify: Restart docker
+
+- name: Запустить Docker
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: true

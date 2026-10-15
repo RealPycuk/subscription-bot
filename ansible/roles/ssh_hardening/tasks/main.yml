@@ -1,0 +1,36 @@
+- name: Общие ограничения sshd
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/60-hardening.conf
+    content: |
+      MaxAuthTries 3
+      LoginGraceTime 30
+      X11Forwarding no
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload ssh
+
+- name: Проверить, был ли уже вход по ключу
+  ansible.builtin.shell: set -o pipefail && journalctl -u ssh -u sshd --since '3 days ago' | grep -q 'Accepted publickey'
+  args:
+    executable: /bin/bash
+  register: ssh_key_login
+  changed_when: false
+  failed_when: false
+  when: ssh_require_key_login | bool
+
+- name: Отключить вход по паролю
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/10-keys-only.conf
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload ssh
+  when: not (ssh_require_key_login | bool) or ssh_key_login.rc == 0
+
+- name: Предупредить, что пароль оставлен
+  ansible.builtin.debug:
+    msg: "Входов по ключу ещё не было — вход по паролю оставлен включённым, чтобы не потерять доступ"
+  when: ssh_require_key_login | bool and ssh_key_login.rc != 0

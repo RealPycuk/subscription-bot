@@ -1,0 +1,25 @@
+# {{ ansible_managed }}
+route:
+  receiver: telegram
+  group_by: [alertname, instance]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 6h
+
+inhibit_rules:
+  # если бот упал, не слать отдельно алерты об ошибках в его обработчиках
+  - source_matchers: [alertname="BotDown"]
+    target_matchers: [alertname=~"BotHandlerErrors|PanelApiErrors|PanelApiSlow"]
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/bot_token
+        chat_id: {{ vault_telegram_chat_id }}
+        parse_mode: HTML
+        send_resolved: true
+        message: |-
+{% raw %}          {{ range .Alerts }}{{ if eq .Status "firing" }}{{ if eq .Labels.severity "critical" }}🔥{{ else }}⚠️{{ end }}{{ else }}✅{{ end }} <b>{{ .Annotations.summary }}</b>
+          {{ .Annotations.description }}
+          {{ end }}
+{% endraw %}

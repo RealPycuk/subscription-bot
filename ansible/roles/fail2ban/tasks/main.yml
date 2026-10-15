@@ -1,0 +1,17 @@
+- name: Установить fail2ban
+  ansible.builtin.apt:
+    name: fail2ban
+    state: present
+
+- name: Настройки jail
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Запустить fail2ban
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    state: started
+    enabled: true

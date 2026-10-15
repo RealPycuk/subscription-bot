@@ -1,0 +1,15 @@
+# Скопируйте в hosts.yml и укажите свои адреса
+all:
+  vars:
+    ansible_user: root
+  children:
+    servers:
+      hosts:
+        server-a:
+          ansible_host: 203.0.113.10
+          peer_ip: 198.51.100.20          # второй сервер: для правил ufw и whitelist fail2ban
+          monitoring_enabled: true
+        server-b:
+          ansible_host: 198.51.100.20
+          peer_ip: 203.0.113.10
+          monitoring_enabled: false

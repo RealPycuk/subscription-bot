@@ -1,0 +1,40 @@
+- name: Установить ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+# SSH открывается первым, до включения файрвола, чтобы не потерять соединение
+- name: Разрешить SSH
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    comment: ssh
+
+- name: Публичные порты
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port | string }}"
+    proto: "{{ item.proto }}"
+    comment: "{{ item.comment }}"
+  loop: "{{ firewall_public_ports }}"
+  loop_control:
+    label: "{{ item.port }}/{{ item.proto }}"
+
+- name: Порты только для второго сервера
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ peer_ip }}"
+    port: "{{ item.port | string }}"
+    proto: "{{ item.proto }}"
+    comment: "{{ item.comment }}"
+  loop: "{{ firewall_peer_ports }}"
+  loop_control:
+    label: "{{ item.port }}/{{ item.proto }} from {{ peer_ip }}"
+  when: peer_ip is defined
+
+- name: Политика по умолчанию и включение
+  community.general.ufw:
+    state: enabled
+    direction: incoming
+    policy: deny

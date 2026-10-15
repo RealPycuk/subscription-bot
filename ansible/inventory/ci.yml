@@ -1,0 +1,10 @@
+# Инвентарь для CI: плейбук применяется к самой виртуальной машине GitHub Actions
+all:
+  hosts:
+    ci-runner:
+      ansible_connection: local
+      ansible_python_interpreter: /usr/bin/python3
+      peer_ip: 198.51.100.20
+      monitoring_enabled: true
+      ssh_require_key_login: false     # у раннера нет входов по ключу в журнале
+      swap_size_mb: 0                  # у раннера свой swap

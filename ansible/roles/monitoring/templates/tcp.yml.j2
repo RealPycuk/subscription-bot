@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+{% if monitoring_tcp_targets %}
+- targets: {{ monitoring_tcp_targets | to_json }}
+{% else %}
+[]
+{% endif %}

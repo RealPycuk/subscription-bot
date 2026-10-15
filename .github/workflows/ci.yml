@@ -70,3 +70,43 @@ jobs:
         run: |
           cp monitoring/.env.example monitoring/.env
           docker compose -f monitoring/docker-compose.yml config -q
+
+  ansible:
+    name: Ansible lint & real run (idempotency)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ansible
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Ansible
+        run: |
+          pip install "ansible-core==2.17.7" "ansible-lint==24.12.2"
+          ansible-galaxy collection install -r requirements.yml -p ./collections
+      - name: ansible-lint
+        run: ansible-lint --offline site.yml
+      - name: Prepare CI secrets
+        run: cp group_vars/all/vault.example.yml group_vars/all/vault.yml
+      - name: First run — настройка «чистого» сервера (сам раннер)
+        run: sudo -E env "PATH=$PATH" ansible-playbook -i inventory/ci.yml site.yml
+      - name: Second run — проверка идемпотентности
+        run: |
+          sudo -E env "PATH=$PATH" ansible-playbook -i inventory/ci.yml site.yml | tee second.log
+          grep -qE 'changed=0 +unreachable=0 +failed=0' second.log || { echo "Второй запуск что-то изменил — роль не идемпотентна"; exit 1; }
+      - name: Verify server state
+        run: |
+          sudo ufw status | grep -q "Status: active"
+          sudo ufw status | grep -q "8444/tcp.*198.51.100.20"
+          systemctl is-active fail2ban
+          sudo fail2ban-client status sshd
+          sudo sshd -T | grep -q "^passwordauthentication no"
+          sudo sshd -T | grep -q "^maxauthtries 3"
+          curl -fsS http://127.0.0.1:9090/-/ready
+          curl -fsS http://127.0.0.1:3000/api/health
+          curl -fsS http://127.0.0.1:9093/-/ready
+          curl -fsS http://127.0.0.1:9100/metrics | grep -q node_cpu_seconds_total
+          test "$(sudo stat -c '%a %u' /opt/monitoring/alertmanager/bot_token)" = "400 65534"
+          test "$(sudo stat -c '%a' /opt/monitoring/.env)" = "600"

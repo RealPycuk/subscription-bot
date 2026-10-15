@@ -1,0 +1,8 @@
+base_packages:
+  - ca-certificates
+  - curl
+  - htop
+  - jq
+  - python3-systemd       # нужен fail2ban для backend = systemd
+  - rsync                 # нужен для копирования файлов ролью monitoring
+  - unattended-upgrades

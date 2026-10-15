@@ -1,0 +1,5 @@
+monitoring_dir: /opt/monitoring
+monitoring_src: "{{ playbook_dir }}/../monitoring"
+# что проверять blackbox'ом: список host:port
+monitoring_tcp_targets: []
+monitoring_https_targets: []

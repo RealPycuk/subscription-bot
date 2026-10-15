@@ -8,6 +8,7 @@
 ![Bash](https://img.shields.io/badge/Bash-4EAA25?logo=gnubash&logoColor=white)
 ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?logo=prometheus&logoColor=white)
 ![Grafana](https://img.shields.io/badge/Grafana-F46800?logo=grafana&logoColor=white)
+![Ansible](https://img.shields.io/badge/Ansible-EE0000?logo=ansible&logoColor=white)
 
 Telegram-бот для продажи и управления подписками сервиса на базе панели SharX (форк 3x-ui, ядро Xray) и инфраструктура вокруг него: два Linux-сервера в разных странах, мониторинг, бэкапы, автоматическое обслуживание по расписанию и защита хостов.
 
@@ -65,6 +66,30 @@ docker compose up -d
 ssh -L 3000:127.0.0.1:3000 user@server                       # Grafana: http://localhost:3000
 ```
 
+## Ansible
+
+Плейбук [`ansible/site.yml`](ansible/site.yml) настраивает чистый Ubuntu-сервер с нуля: те же настройки, что на рабочих серверах, но воспроизводимо и одной командой.
+
+| Роль | Что делает |
+|---|---|
+| `base` | пакеты, часовой пояс, автоматические обновления безопасности, swap, `vm.swappiness` |
+| `ssh_hardening` | ограничения sshd; вход по паролю отключается, только если уже был успешный вход по ключу, — чтобы не потерять доступ. Конфиги проверяются `sshd -t` до применения |
+| `fail2ban` | бан перебора SSH с нарастающим сроком, второй сервер в whitelist |
+| `firewall` | ufw: SSH открывается до включения файрвола, остальное закрыто, служебные порты — только для второго сервера |
+| `docker` | Docker из официального репозитория, ротация логов; существующий `daemon.json` не затирается, а дополняется |
+| `monitoring` | разворачивает стек из `monitoring/`, секреты — из `ansible-vault` с `no_log` |
+
+```bash
+cd ansible
+ansible-galaxy collection install -r requirements.yml -p ./collections
+cp inventory/hosts.example.yml inventory/hosts.yml                 # адреса серверов
+cp group_vars/all/vault.example.yml group_vars/all/vault.yml && ansible-vault encrypt group_vars/all/vault.yml
+ansible-playbook site.yml --check --diff --ask-vault-pass           # что изменится
+ansible-playbook site.yml --ask-vault-pass                          # применить
+```
+
+**Проверка в CI:** плейбук по-настоящему применяется к виртуальной машине GitHub Actions (Ubuntu 24.04) как к новому серверу, затем запускается второй раз — тест падает, если второй запуск хоть что-то изменил (проверка идемпотентности). После этого проверяется итоговое состояние: ufw активен и правило для второго сервера на месте, fail2ban работает, вход по паролю выключен, все сервисы мониторинга отвечают, у секретов правильные права.
+
 ## Безопасность
 
 | Где | Что сделано |
@@ -77,7 +102,7 @@ ssh -L 3000:127.0.0.1:3000 user@server                       # Grafana: http://l
 
 ## Стек
 
-Python 3.12, aiogram 3, aiohttp, aiosqlite · Docker, Docker Compose · PostgreSQL · Prometheus, Alertmanager, Grafana, node_exporter, blackbox_exporter · Bash, cron · Xray · ufw, fail2ban · GitHub Actions
+Python 3.12, aiogram 3, aiohttp, aiosqlite · Docker, Docker Compose · PostgreSQL · Prometheus, Alertmanager, Grafana, node_exporter, blackbox_exporter · Ansible · Bash, cron · Xray · ufw, fail2ban · GitHub Actions
 
 ## Запуск
 
@@ -110,7 +135,8 @@ sudo cp scripts/geo-update.cron /etc/cron.d/geo-update
 3. `hadolint` по Dockerfile;
 4. сборку образа и проверку, что контейнер запускается не от root;
 5. проверку `docker-compose.yml` через `docker compose config`;
-6. проверку конфигов мониторинга (`promtool`, `amtool`, blackbox), юнит-тесты алертов и валидацию дашбордов.
+6. проверку конфигов мониторинга (`promtool`, `amtool`, blackbox), юнит-тесты алертов и валидацию дашбордов;
+7. `ansible-lint` (профиль production) и реальный прогон плейбука дважды с проверкой идемпотентности.
 
 ## Структура
 
@@ -123,6 +149,7 @@ sudo cp scripts/geo-update.cron /etc/cron.d/geo-update
 │   ├── tariffs.json         # тарифы
 │   └── monitoring.example.json
 ├── scripts/                 # обслуживание: geo-списки, ссылки маршрутизации, правка .env
+├── ansible/                 # плейбук и роли: настройка сервера с нуля
 ├── monitoring/              # Prometheus, Alertmanager, Grafana, exporters, алерты и их тесты
 ├── server/                  # защита хоста: sshd, fail2ban, ufw
 ├── docs/architecture.svg
@@ -133,5 +160,5 @@ sudo cp scripts/geo-update.cron /etc/cron.d/geo-update
 ## Планы
 
 - [x] метрики в Prometheus, дашборд в Grafana, алерты в Telegram
-- [ ] Ansible-плейбук для настройки и защиты нового сервера с нуля
+- [x] Ansible-плейбук для настройки и защиты нового сервера с нуля
 - [ ] деплой бота из GitHub Actions по тегу

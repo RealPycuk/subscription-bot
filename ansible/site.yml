@@ -1,0 +1,21 @@
+# Полная настройка сервера с нуля:
+#   ansible-galaxy collection install -r requirements.yml
+#   ansible-playbook site.yml --ask-vault-pass            # применить
+#   ansible-playbook site.yml --check --diff              # посмотреть, что изменится
+- name: Настройка сервера
+  hosts: all
+  become: true
+  roles:
+    - role: base
+      tags: [base]
+    - role: ssh_hardening
+      tags: [ssh]
+    - role: fail2ban
+      tags: [fail2ban]
+    - role: firewall
+      tags: [firewall]
+    - role: docker
+      tags: [docker]
+    - role: monitoring
+      tags: [monitoring]
+      when: monitoring_enabled | default(false)

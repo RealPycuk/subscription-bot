@@ -1,0 +1,3 @@
+- name: Reload ssh
+  ansible.builtin.shell: /usr/sbin/sshd -t && (systemctl reload ssh || systemctl reload sshd)
+  changed_when: true

@@ -1,0 +1,61 @@
+- name: Скопировать стек мониторинга
+  ansible.posix.synchronize:
+    src: "{{ monitoring_src }}/"
+    dest: "{{ monitoring_dir }}/"
+    rsync_opts:
+      - "--exclude=.env"
+      - "--exclude=alertmanager/alertmanager.yml"
+      - "--exclude=alertmanager/bot_token"
+      - "--exclude=prometheus/targets/tcp.yml"
+      - "--exclude=prometheus/targets/https.yml"
+      - "--chmod=D755,F644"
+  notify: Restart monitoring
+
+- name: Пароль Grafana
+  ansible.builtin.copy:
+    dest: "{{ monitoring_dir }}/.env"
+    content: |
+      GF_SECURITY_ADMIN_USER=admin
+      GF_SECURITY_ADMIN_PASSWORD={{ vault_grafana_admin_password }}
+    mode: "0600"
+  no_log: true
+  notify: Restart monitoring
+
+- name: Токен бота для Alertmanager
+  ansible.builtin.copy:
+    dest: "{{ monitoring_dir }}/alertmanager/bot_token"
+    content: "{{ vault_telegram_bot_token }}"
+    owner: "65534"
+    mode: "0400"
+  no_log: true
+  notify: Restart monitoring
+
+- name: Конфиг Alertmanager
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: "{{ monitoring_dir }}/alertmanager/alertmanager.yml"
+    mode: "0644"
+  notify: Restart monitoring
+
+- name: Цели blackbox
+  ansible.builtin.template:
+    src: "{{ item }}.yml.j2"
+    dest: "{{ monitoring_dir }}/prometheus/targets/{{ item }}.yml"
+    mode: "0644"
+  loop: [tcp, https]
+
+- name: Поднять стек
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_dir }}"
+    state: present
+    pull: missing
+    wait: true
+    wait_timeout: 180
+
+- name: Prometheus готов
+  ansible.builtin.uri:
+    url: http://127.0.0.1:9090/-/ready
+  register: monitoring_ready
+  until: monitoring_ready.status == 200
+  retries: 20
+  delay: 3

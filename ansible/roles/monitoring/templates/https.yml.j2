@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+{% if monitoring_https_targets %}
+- targets: {{ monitoring_https_targets | to_json }}
+{% else %}
+[]
+{% endif %}

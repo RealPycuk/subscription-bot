@@ -1,0 +1,23 @@
+# Общие настройки для всех серверов. Секреты — в vault.yml (ansible-vault), см. vault.example.yml
+timezone: Etc/UTC
+
+# swap создаётся, если его нет; 0 — не создавать
+swap_size_mb: 512
+
+# свои адреса, которые fail2ban никогда не банит (домашний IP и т.п.)
+fail2ban_ignoreip_extra: []
+
+# входящие порты: открыты для всех
+firewall_public_ports:
+  - {port: 22, proto: tcp, comment: ssh}
+  - {port: 80, proto: tcp, comment: acme http-01}
+  - {port: 443, proto: tcp, comment: reality}
+  - {port: 449, proto: tcp, comment: reality xhttp}
+  - {port: 444, proto: udp, comment: hysteria2}
+
+# входящие порты: открыты только для второго сервера (peer_ip)
+firewall_peer_ports:
+  - {port: 8444, proto: tcp, comment: bridge from peer}
+
+# пароль отключается, только если в журнале уже есть успешный вход по ключу
+ssh_require_key_login: true
