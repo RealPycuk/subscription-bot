@@ -1,0 +1,2 @@
+# /etc/sudoers.d/deploy-bot — пользователь deploy может запускать только скрипт деплоя
+deploy ALL=(root) NOPASSWD: /usr/local/sbin/deploy-bot
