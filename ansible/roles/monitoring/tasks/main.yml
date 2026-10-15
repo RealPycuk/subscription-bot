@@ -9,6 +9,8 @@
       - "--exclude=prometheus/targets/tcp.yml"
       - "--exclude=prometheus/targets/https.yml"
       - "--chmod=D755,F644"
+      # в эти же каталоги пишут шаблоны ниже: без этого rsync считал бы их изменёнными при каждом запуске
+      - "--omit-dir-times"
   notify: Restart monitoring
 
 - name: Пароль Grafana
