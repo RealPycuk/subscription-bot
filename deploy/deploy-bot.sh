@@ -34,12 +34,14 @@ log "образ собран: $IMAGE:$TAG"
 PREV=$(docker image inspect "$IMAGE:current" --format '{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || true)
 switch(){ docker tag "$IMAGE:$1" "$IMAGE:current" && docker compose --project-directory "$APP_DIR" up -d --no-build >/dev/null 2>&1; }
 healthy(){
-  local started; started=$(date -u +%s)
+  local started
   for _ in $(seq 1 30); do
     sleep 3
     [ "$(docker inspect -f '{{.State.Running}} {{.RestartCount}}' "$CONTAINER" 2>/dev/null)" = "true 0" ] || continue
     curl -fsS -m 3 "$METRICS_URL" >/dev/null 2>&1 || continue
-    docker logs --since "@$started" "$CONTAINER" 2>&1 | grep -q "Start polling" && return 0
+    # логи с момента старта именно этого контейнера: бот пишет «Start polling» почти сразу после запуска
+    started=$(docker inspect -f '{{.State.StartedAt}}' "$CONTAINER")
+    docker logs --since "$started" "$CONTAINER" 2>&1 | grep -q "Start polling" && return 0
   done
   return 1
 }
@@ -51,7 +53,7 @@ else
   log "ОШИБКА: $TAG не прошёл проверку здоровья, последние логи:"
   docker logs --tail 30 "$CONTAINER" 2>&1 | tee -a /var/log/deploy-bot.log || true
   if [ -n "$PREV" ] && docker image inspect "$IMAGE:$PREV" >/dev/null 2>&1; then
-    switch "$PREV" && healthy && log "откат на $PREV выполнен" || log "ОТКАТ НЕ УДАЛСЯ — нужна ручная проверка"
+    if switch "$PREV" && healthy; then log "откат на $PREV выполнен"; else log "ОТКАТ НЕ УДАЛСЯ — нужна ручная проверка"; fi
   fi
   exit 1
 fi
